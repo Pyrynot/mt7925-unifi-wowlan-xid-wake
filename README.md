@@ -12,6 +12,10 @@ A Windows 11 desktop connected to a UniFi U7 Pro on 6 GHz woke from S3 about fiv
 | Access point | UniFi U7 Pro, firmware `8.7.11` |
 | Test client | Intel 8265 on a separate computer, joining the 2.4 GHz SSID with IPv4 and IPv6 disabled |
 
+### Newer driver and release notes
+
+As of November 18, 2026, Microsoft Update Catalog also offers `26.40.3.69` for Windows 11 x64. Its INF is dated August 24, 2026 and lists the tested adapter's exact PCI subsystem ID. Lenovo's release notes for this version list a fix for Wi-Fi connections displaying as unavailable after a restart with Ethernet connected. They do not mention S3, LLC XID, or unexpected wakes. The sleep tests below used `5.7.0.6342`. Whether `26.40.3.69` fixes this wake remains open. [Microsoft Update Catalog package](https://www.catalog.update.microsoft.com/ScopedViewInline.aspx?updateid=ada39d67-ff35-4a47-82f0-d9e9aa59df46) · [Lenovo release notes](https://download.lenovo.com/pccbbs/mobiles/r31mw06w.html)
+
 ## What established the cause
 
 Windows Power-Troubleshooter event 1 reported **PCI Express Root Port**. To identify the traffic that preceded the wake, we compared Windows' recorded wake time with the AP's bridge and 6 GHz interface captures. An independent wired host sent a scheduled magic packet so the desktop could wake even if the join had no effect.
@@ -56,7 +60,7 @@ tc -s filter show dev "$dev" egress
 
 Check the `dropped` counter before and after a normal Wi-Fi join. This check works with the desktop awake. To verify sleep behavior, use a time when the PC is idle and arrange a known way to wake it. Check that it stays asleep across the join, then that it wakes on the intended magic packet. On Windows, `powercfg /a` reports the sleep model, and **Event Viewer → Windows Logs → System → Power-Troubleshooter → Event 1** records the resume time.
 
-To remove only this filter, use the same interface, priority, and handle:
+Remove only this filter with the same interface, priority, and handle.
 
 ```sh
 tc filter del dev "$dev" egress protocol all pref 43137 handle 1 bpf
