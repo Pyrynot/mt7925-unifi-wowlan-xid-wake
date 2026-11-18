@@ -1,0 +1,25 @@
+trial,seconds_from_sleep,source,event
+ordinary_join,0.000,Windows Event 1,sleep
+ordinary_join,52.238,AP bridge capture,LLC XID
+ordinary_join,52.238,AP 6 GHz capture,LLC XID
+ordinary_join,52.239,2.4 GHz client,associated
+ordinary_join,57.426,Windows Event 1,wake
+bridge_rule,0.000,Windows Event 1,sleep
+bridge_rule,46.556,AP bridge capture,LLC XID
+bridge_rule,46.556,AP 6 GHz capture,LLC XID
+bridge_rule,46.558,2.4 GHz client,associated
+bridge_rule,51.587,Windows Event 1,wake
+magic_control,0.000,Windows Event 1,sleep
+magic_control,44.775,AP bridge capture,LLC XID
+magic_control,44.783,2.4 GHz client,associated
+magic_control,63.259,2.4 GHz client,disassociated
+magic_control,98.603,wired sender,magic packet sent
+magic_control,102.944,Windows Event 1,wake
+two_joins_one_sleep,0.000,Windows Event 1,sleep
+two_joins_one_sleep,36.607,AP bridge capture,LLC XID
+two_joins_one_sleep,36.617,2.4 GHz client,associated
+two_joins_one_sleep,49.119,2.4 GHz client,disassociated
+two_joins_one_sleep,112.717,AP bridge capture,LLC XID
+two_joins_one_sleep,112.717,AP 6 GHz capture,LLC XID
+two_joins_one_sleep,112.717,2.4 GHz client,associated
+two_joins_one_sleep,117.975,Windows Event 1,wake

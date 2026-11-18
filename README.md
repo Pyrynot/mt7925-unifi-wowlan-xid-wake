@@ -1,6 +1,36 @@
 # MediaTek MT7925 wakes Windows from sleep when another Wi-Fi client joins a UniFi AP
 
-A Windows 11 desktop connected to a UniFi U7 Pro on 6 GHz woke from S3 about five seconds after an unrelated device joined on 2.4 GHz. Both SSIDs shared a LAN. The trigger we verified was a **broadcast LLC XID layer-2 update** forwarded onto the desktop's Wi-Fi interface. Dropping that frame at the AP let the desktop sleep through the join and still wake on an intentional Wi-Fi magic packet (WoWLAN).
+A Windows 11 desktop connected to a UniFi U7 Pro on 6 GHz woke from S3 about five seconds after an unrelated device joined on 2.4 GHz. Both SSIDs shared a LAN. On an ordinary join, the AP forwarded a **broadcast LLC XID layer-2 update** onto the desktop's Wi-Fi interface. Dropping that frame at the AP let the desktop sleep through the join and still wake on an intentional Wi-Fi magic packet (WoWLAN).
+
+In **one uninterrupted sleep cycle**, the same client joined twice. The AP dropped the first join's frame, then removed the filter while the desktop slept. The second frame reached 6 GHz, and Windows recorded a wake 5.26 seconds later. [Experiment notes and controls](evidence/README.md) · [Event timeline (CSV)](evidence/wake-timeline.csv)
+
+## Does this look like your wake?
+
+The clue on this machine was the timing. The PC could sleep for half an hour on a quiet network. An unrelated device reconnecting to Wi-Fi could wake it within seconds, even though **Wake on Pattern Match** was disabled. The devices used different bands and SSIDs on the same LAN.
+
+These read-only PowerShell commands work while the PC is awake. The first shows whether Windows offers S3 (`Standby (S3)`). The next two show devices armed to wake Windows and what Windows attributed the last wake to. Open an elevated PowerShell if access is denied. [Microsoft powercfg reference](https://learn.microsoft.com/en-us/windows-hardware/design/device-experiences/powercfg-command-line-options)
+
+```powershell
+powercfg /a
+powercfg /devicequery wake_armed
+powercfg /lastwake
+
+$wifi = Get-NetAdapter -Physical | Where-Object {
+    $_.Status -eq 'Up' -and $_.InterfaceDescription -match 'MT7925'
+}
+$wifi | Format-Table Name, InterfaceDescription, DriverVersion
+$wifi | Get-NetAdapterAdvancedProperty | Where-Object {
+    $_.RegistryKeyword -match 'Wake|Rekey'
+} | Format-Table DisplayName, DisplayValue, RegistryKeyword
+
+Get-WinEvent -FilterHashtable @{
+    LogName = 'System'
+    ProviderName = 'Microsoft-Windows-Power-Troubleshooter'
+    Id = 1
+} -MaxEvents 5 | Format-List TimeCreated, Message
+```
+
+Read **Wake Time** inside the event message when comparing with an AP log. Windows wrote the event several seconds after the recorded resume. **PCI Express Root Port** identifies the hardware path. To identify the traffic, run the passive capture below while the desktop is awake and watch a normal client join. Seeing an XID confirms that the AP forwards the frame on that interface. Linking it to a wake requires the sleep comparison. [Recognizing the frame](#recognizing-the-frame)
 
 ## Hardware and settings
 
@@ -10,7 +40,7 @@ A Windows 11 desktop connected to a UniFi U7 Pro on 6 GHz woke from S3 about fiv
 | Operating system | Windows 11 25H2, build `26200.9974`, S3 standby |
 | Adapter settings | Wake on Magic Packet enabled, Wake on Pattern Match disabled, GTK Rekey for WOWLAN enabled |
 | Access point | UniFi U7 Pro, firmware `8.7.11` |
-| Test client | Intel 8265 on a separate computer, joining the 2.4 GHz SSID with IPv4 and IPv6 disabled |
+| Test client | Intel 8265 on a separate computer, joining the 2.4 GHz SSID with no IPv4 address or DHCP client and IPv6 disabled |
 
 ### Newer driver and release notes
 
@@ -18,13 +48,13 @@ As of November 18, 2026, Microsoft Update Catalog also offers `26.40.3.69` for W
 
 ## What established the cause
 
-Windows Power-Troubleshooter event 1 reported **PCI Express Root Port**. To identify the traffic that preceded the wake, we compared Windows' recorded wake time with the AP's bridge and 6 GHz interface captures. An independent wired host sent a scheduled magic packet so the desktop could wake even if the join had no effect.
+Windows Power-Troubleshooter event 1 provided the resume time. Captures on the AP bridge and the outgoing 6 GHz interface showed where the join update traveled. An independent wired host had a magic packet scheduled for later in each trial.
 
 | Test | What the AP observed | What Windows did |
 |---|---|---|
 | Ordinary client join | The same XID appeared on the bridge and the desktop's 6 GHz interface. | Woke 5.19 seconds after the frame. |
 | First join during a second sleep cycle | The XID appeared on the bridge. An exact-match egress filter dropped one 20-byte frame. The 6 GHz capture saw none. | Slept through the join and disconnect. |
-| Second join during that **same** sleep cycle | We removed the filter. The same client rejoined and the XID appeared on 6 GHz. | Woke 5.26 seconds after the frame, before the scheduled magic packet. |
+| Second join during that **same** sleep cycle | With the filter removed, the same client rejoined and the XID appeared on 6 GHz. | Woke 5.26 seconds after the frame, before the scheduled magic packet. |
 | Independent magic-packet control | A temporary source-MAC filter dropped the test client's only broadcast on the 6 GHz interface, one 20-byte frame. The wired host later sent a magic packet. | Slept through the join and woke 4.34 seconds after the magic packet. |
 
 A bridge firewall rule recorded zero hits and the frame still appeared on Wi-Fi. The working filter was attached to the **outgoing Wi-Fi interface**. Checking both its counter and the outgoing capture mattered here.
@@ -65,3 +95,9 @@ Remove only this filter with the same interface, priority, and handle.
 ```sh
 tc filter del dev "$dev" egress protocol all pref 43137 handle 1 bpf
 ```
+
+## Reporting another result
+
+Reports from other adapters, APs, or driver versions would help establish the scope. A result on `26.40.3.69` is especially useful. Include the adapter model and driver version, Windows build and sleep model, AP model and firmware, and whether the two clients share a LAN. For each join, record whether the XID appeared on the **PC-facing** interface, whether the drop counter increased, and how long until Windows recorded a wake. Include the outcome of an intentional magic packet if you depend on WoWLAN.
+
+For a driver comparison, keep the AP, band, sleep model, and adapter settings the same. Check the outgoing capture with the workaround removed so the new driver actually receives the frame. A quiet night with the AP filter active cannot tell which component prevented a wake. Relative timestamps and anonymized observations are enough for a public report. [Open an issue](https://github.com/Pyrynot/mt7925-unifi-wowlan-xid-wake/issues)
